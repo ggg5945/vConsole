@@ -182,19 +182,10 @@ export class VConsoleNetworkModel extends VConsoleModel {
           handleEntry(e);
         }
       });
+      // buffered: true will automatically include existing resource entries
       this.resourceObserver.observe({ type: 'resource', buffered: true });
     } catch (e) {
       this.resourceObserver = null;
-    }
-
-    // also dump existing resource entries
-    try {
-      const existing = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
-      for (const e of existing) {
-        handleEntry(e);
-      }
-    } catch (e) {
-      // ignore
     }
   }
 
