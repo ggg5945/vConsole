@@ -149,7 +149,19 @@ export class VConsoleNetworkModel extends VConsoleModel {
         item.startTime = Math.round(timeOrigin + entry.startTime);
         item.endTime = Math.round(timeOrigin + entry.responseEnd);
         item.costTime = Math.round(entry.responseEnd - entry.startTime);
-        item.statusText = 'Resource';
+        
+        // Extract HTTP status code from PerformanceResourceTiming if available
+        const responseStatus = (entry as any).responseStatus;
+        if (typeof responseStatus === 'number' && responseStatus > 0) {
+          // Browser supports responseStatus and it's available
+          item.status = responseStatus;
+          item.statusText = String(responseStatus);
+        } else {
+          // Fallback for browsers that don't support responseStatus or when status is unavailable
+          item.status = 0;
+          item.statusText = 'Resource';
+        }
+        
         item.readyState = 4;
         // try to get size info
         item.responseSize = (typeof (entry as any).transferSize === 'number' && (entry as any).transferSize > 0)
