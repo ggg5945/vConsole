@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import * as tool from '../lib/tool';
   import IconCopy from '../component/icon/iconCopy.svelte';
+  import Icon from '../component/icon/icon.svelte';
   import { requestList } from './network.model';
   import Style from './network.less';
   import RecycleScroller from '../component/recycleScroller/recycleScroller.svelte';
@@ -20,8 +21,20 @@
   };
 
   let reqList = [];
+  let filterText = '';
+
   $: {
-    reqList = Object.values($requestList);
+    // 根据过滤文本筛选请求列表
+    const allReqs = Object.values($requestList);
+    if (filterText === '') {
+      reqList = allReqs;
+    } else {
+      const filterLower = filterText.toLowerCase();
+      reqList = allReqs.filter((req: VConsoleNetworkRequestItem) => {
+        return req.name?.toLowerCase().includes(filterLower) || 
+               req.url?.toLowerCase().includes(filterLower);
+      });
+    }
   }
 
   const onTapPreview = (reqId: string) => {
@@ -35,6 +48,10 @@
       curl += ` -d '${tool.safeJSONStringify(req.postData)}'`;
     }
     return `${curl} '${req.url}'`;
+  };
+
+  const onTapClearFilter = () => {
+    filterText = '';
   };
 
   onMount(() => {
@@ -56,7 +73,7 @@
 
 <div class="vc-table">
 
-  <div class="vc-plugin-content">
+  <div class="vc-plugin-content vc-network-content">
     <RecycleScroller
       items={reqList}
       itemKey="id"
@@ -68,7 +85,7 @@
     
       <svelte:fragment slot="header">
         <dl class="vc-table-row">
-          <dd class="vc-table-col vc-table-col-4">Name {#if reqCount > 0}({reqCount}){/if}</dd>
+          <dd class="vc-table-col vc-table-col-4">Name {#if reqCount > 0}({reqList.length}/{reqCount}){/if}</dd>
           <dd class="vc-table-col">Method</dd>
           <dd class="vc-table-col">Status</dd>
           <dd class="vc-table-col">Time</dd>
@@ -211,6 +228,36 @@
           </div>
         </div>
       </div>
+
+      <svelte:fragment slot="footer">
+        <form class="vc-cmd vc-network-filter" on:submit|preventDefault>
+          <div class="vc-cmd-input-wrap">
+            <textarea
+              class="vc-cmd-input"
+              placeholder="Filter by name or url..."
+              bind:value={filterText}
+            ></textarea>
+            {#if filterText.length > 0}
+              <div class="vc-cmd-clear-btn" on:click={onTapClearFilter}>
+                <Icon name="clear" />
+              </div>
+            {/if}
+          </div>
+        </form>
+      </svelte:fragment>
     </RecycleScroller>
   </div>
 </div>
+
+<style>
+  .vc-network-content {
+    padding-bottom: 0;
+  }
+  
+  .vc-network-filter {
+    position: sticky;
+    bottom: 0;
+    background-color: var(--VC-BG-0);
+    z-index: 1;
+  }
+</style>
