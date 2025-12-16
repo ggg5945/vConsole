@@ -124,6 +124,19 @@ export class VConsoleNetworkModel extends VConsoleModel {
       this.updateRequest(item.id, item);
     });
   }
+  
+  // 辅助方法：根据资源类型推断请求方法
+  // private getMethodFromInitiatorType(initiatorType: string): string {
+  //   // 资源加载通常都是 GET，但可以添加标识区分
+  //   const typeMap: Record<string, string> = {
+  //     'link': 'GET',
+  //     'script': 'GET', 
+  //     'img': 'GET',
+  //     'css': 'GET',
+  //     'other': 'GET'
+  //   };
+  //   return typeMap[initiatorType] || 'GET';
+  // }
 
   /**
    * mock resource requests by PerformanceObserver
@@ -135,10 +148,38 @@ export class VConsoleNetworkModel extends VConsoleModel {
 
     const handleEntry = (entry: PerformanceResourceTiming) => {
       try {
-        const item = new VConsoleNetworkRequestItem();
-        item.requestType = 'custom';
-        item.method = 'GET';
-        item.url = entry.name;
+        // 过滤掉 xmlhttprequest 和 fetch 类型，避免重复显示
+      if (entry.initiatorType === 'xmlhttprequest' || entry.initiatorType === 'fetch') {
+        return;
+      }
+      
+      const item = new VConsoleNetworkRequestItem();
+      item.requestType = entry.initiatorType || 'resource'; // 使用真实的资源类型 'custom';
+      
+      // 根据资源类型设置更准确的标识
+      // item.method = this.getMethodFromInitiatorType(entry.initiatorType);
+	  // 根据类型分类
+	  switch (entry.initiatorType) {
+		case 'xmlhttprequest':
+		case 'fetch':
+		  item.method = 'API'; // 标记为 API 请求（方法未知）
+		  break;
+		case 'script':
+		  item.method = 'JS';
+		  break;
+		case 'link':
+		case 'css':
+		  item.method = 'CSS';
+		  break;
+		case 'img':
+		  item.method = 'IMG';
+		  break;
+		default:
+		  item.method = entry.initiatorType.toUpperCase();
+	  }
+	  item.method = "Unknown - " + item.method;
+      item.url = entry.name;
+	  
         try {
           const url = new URL(entry.name, window.location.href);
           item.name = (url.pathname.split('/').pop() || '') + url.search;
