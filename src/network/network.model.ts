@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { VConsoleModel } from '../lib/model';
+import * as tool from '../lib/tool';
 import { contentStore } from '../core/core.model';
 import { VConsoleNetworkRequestItem } from './requestItem';
 import { XHRProxy } from './xhr.proxy';
@@ -20,12 +21,14 @@ export class VConsoleNetworkModel extends VConsoleModel {
   public maxNetworkNumber: number = 1000;
   public ignoreUrlRegExp: RegExp = undefined;
   protected itemCounter: number = 0;
+  protected resourceObserver: PerformanceObserver = null;
 
   constructor() {
     super();
     this.mockXHR();
     this.mockFetch();
     this.mockSendBeacon();
+    this.mockResources();
   }
 
   public unMock() {
@@ -38,6 +41,15 @@ export class VConsoleNetworkModel extends VConsoleModel {
     }
     if (BeaconProxy.hasSendBeacon()) {
       window.navigator.sendBeacon = BeaconProxy.origSendBeacon;
+    }
+    // disconnect resource observer
+    try {
+      if (this.resourceObserver) {
+        this.resourceObserver.disconnect();
+        this.resourceObserver = null;
+      }
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -111,6 +123,67 @@ export class VConsoleNetworkModel extends VConsoleModel {
     window.navigator.sendBeacon = BeaconProxy.create((item: VConsoleNetworkRequestItem) => {
       this.updateRequest(item.id, item);
     });
+  }
+
+  /**
+   * mock resource requests by PerformanceObserver
+   */
+  private mockResources() {
+    if (typeof PerformanceObserver === 'undefined' || typeof performance === 'undefined') {
+      return;
+    }
+
+    const handleEntry = (entry: PerformanceResourceTiming) => {
+      try {
+        const item = new VConsoleNetworkRequestItem();
+        item.requestType = 'custom';
+        item.method = 'GET';
+        item.url = entry.name;
+        try {
+          const url = new URL(entry.name, window.location.href);
+          item.name = (url.pathname.split('/').pop() || '') + url.search;
+        } catch (e) {
+          item.name = entry.name;
+        }
+        const timeOrigin = (performance as any).timeOrigin || (Date.now() - performance.now());
+        item.startTime = Math.round(timeOrigin + entry.startTime);
+        item.endTime = Math.round(timeOrigin + entry.responseEnd);
+        item.costTime = Math.round(entry.responseEnd - entry.startTime);
+        item.statusText = 'Resource';
+        item.readyState = 4;
+        // try to get size info
+        item.responseSize = (typeof (entry as any).transferSize === 'number' && (entry as any).transferSize > 0)
+          ? (entry as any).transferSize
+          : ((typeof (entry as any).encodedBodySize === 'number') ? (entry as any).encodedBodySize : 0);
+        item.responseSizeText = tool.getBytesText(item.responseSize || 0);
+        this.updateRequest(item.id, item);
+      } catch (e) {
+        // ignore single entry errors
+      }
+    };
+
+    // observe new resource entries
+    try {
+      this.resourceObserver = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        for (const e of entries as PerformanceResourceTiming[]) {
+          handleEntry(e);
+        }
+      });
+      this.resourceObserver.observe({ type: 'resource', buffered: true });
+    } catch (e) {
+      this.resourceObserver = null;
+    }
+
+    // also dump existing resource entries
+    try {
+      const existing = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+      for (const e of existing) {
+        handleEntry(e);
+      }
+    } catch (e) {
+      // ignore
+    }
   }
 
   protected limitListLength() {
